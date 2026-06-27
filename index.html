@@ -437,6 +437,8 @@
       font-weight:bold;
       position:relative;
       z-index:5;
+      word-wrap:break-word;
+      overflow-wrap:break-word;
     }
 
     .secret-box{
@@ -453,6 +455,8 @@
       font-weight:bold;
       position:relative;
       z-index:5;
+      word-wrap:break-word;
+      overflow-wrap:break-word;
     }
 
     .extra-box{
@@ -469,6 +473,8 @@
       font-weight:bold;
       position:relative;
       z-index:5;
+      word-wrap:break-word;
+      overflow-wrap:break-word;
     }
 
     .signature{
@@ -629,7 +635,7 @@
 
 <!-- PAGE 1 -->
 <section class="page active" id="page1">
-  <div class="envelope-wrap" onclick="openEnvelope()">
+  <div class="envelope-wrap" id="envelopeWrap" onclick="openEnvelope()">
     <div class="envelope" id="envelope">
       <div class="env-body"></div>
       <div class="env-flap"></div>
@@ -748,39 +754,82 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
 
   const finalLine = `I LOVE YOU KUP SARA BUDHHU MAZA ❤️❤️❤️`;
 
+  // ========= GLOBAL STATE MANAGEMENT (BUG FIX) =========
+  const STATE = {
+    envelopeOpened: false,
+    page2Started: false,
+    page3Started: false,
+    typingInProgress: false,
+    allTimers: [],
+    allIntervals: [],
+    musicLoop: null,
+    decorTimer: null
+  };
+
+  // Helper: Safe setTimeout that we can track and clear
+  function safeTimeout(fn, delay){
+    const id = setTimeout(()=>{
+      fn();
+      const idx = STATE.allTimers.indexOf(id);
+      if(idx > -1) STATE.allTimers.splice(idx, 1);
+    }, delay);
+    STATE.allTimers.push(id);
+    return id;
+  }
+
+  function safeInterval(fn, delay){
+    const id = setInterval(fn, delay);
+    STATE.allIntervals.push(id);
+    return id;
+  }
+
+  function clearAllTimers(){
+    STATE.allTimers.forEach(id => clearTimeout(id));
+    STATE.allTimers = [];
+  }
+
+  // ========= EMOJI-SAFE STRING SPLITTING (BUG FIX) =========
+  // Splits string into proper characters (emojis stay together)
+  function splitToChars(str){
+    return Array.from(str); // Array.from handles emojis correctly!
+  }
+
   // ========= AUDIO =========
   let audioCtx = null;
   let musicOn = false;
-  let loopRef = null;
   let masterGain = null;
 
   function initAudio(){
-    if(!audioCtx){
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.6;
-      masterGain.connect(audioCtx.destination);
+    try{
+      if(!audioCtx){
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.6;
+        masterGain.connect(audioCtx.destination);
+      }
+      if(audioCtx.state === 'suspended'){
+        audioCtx.resume();
+      }
+    }catch(e){
+      console.log('Audio init error:', e);
     }
     return audioCtx;
   }
 
-  // Beautiful piano note with rich harmonics
   function playPianoNote(freq, dur, vol=0.15, delay=0){
     try{
-      const ctx = initAudio();
+      if(!audioCtx) return;
+      const ctx = audioCtx;
       const now = ctx.currentTime + delay;
       
-      // Main tone
       const osc1 = ctx.createOscillator();
       osc1.type = 'sine';
       osc1.frequency.setValueAtTime(freq, now);
       
-      // Harmonic for richness
       const osc2 = ctx.createOscillator();
       osc2.type = 'triangle';
       osc2.frequency.setValueAtTime(freq * 2, now);
       
-      // Sub harmonic for warmth
       const osc3 = ctx.createOscillator();
       osc3.type = 'sine';
       osc3.frequency.setValueAtTime(freq * 0.5, now);
@@ -789,7 +838,6 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
       const gain2 = ctx.createGain();
       const gain3 = ctx.createGain();
       
-      // Piano-like envelope: quick attack, slow decay
       gain1.gain.setValueAtTime(0, now);
       gain1.gain.linearRampToValueAtTime(vol, now + 0.02);
       gain1.gain.exponentialRampToValueAtTime(vol * 0.3, now + 0.3);
@@ -821,7 +869,8 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
 
   function playSimpleTone(freq, dur, type='sine', vol=0.05, delay=0){
     try{
-      const ctx = initAudio();
+      if(!audioCtx) return;
+      const ctx = audioCtx;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = type;
@@ -836,51 +885,22 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     }catch(e){}
   }
 
-  // ❤️ BEAUTIFUL LOVE MELODY - "River Flows In You" + "Perfect" inspired
-  // This is a real, recognizable, emotional love melody
   function playLoveMelody(){
-    // Notes in Hz - "River Flows In You" inspired progression
-    // Key of A minor / C major - romantic & emotional
     const melody = [
-      // Phrase 1 - opening (gentle ascending)
-      {f: 659.25, d: 0.4},  // E5
-      {f: 783.99, d: 0.4},  // G5
-      {f: 880.00, d: 0.8},  // A5
-      {f: 783.99, d: 0.4},  // G5
-      {f: 659.25, d: 0.4},  // E5
-      {f: 587.33, d: 0.8},  // D5
-      
-      // Phrase 2 - emotional rise
-      {f: 523.25, d: 0.4},  // C5
-      {f: 587.33, d: 0.4},  // D5
-      {f: 659.25, d: 0.8},  // E5
-      {f: 783.99, d: 0.4},  // G5
-      {f: 880.00, d: 0.4},  // A5
-      {f: 987.77, d: 1.0},  // B5
-      
-      // Phrase 3 - climax
-      {f: 1046.50, d: 0.6}, // C6
-      {f: 987.77, d: 0.4},  // B5
-      {f: 880.00, d: 0.4},  // A5
-      {f: 783.99, d: 0.6},  // G5
-      {f: 659.25, d: 0.4},  // E5
-      {f: 587.33, d: 1.0},  // D5
-      
-      // Phrase 4 - gentle close
-      {f: 523.25, d: 0.4},  // C5
-      {f: 587.33, d: 0.4},  // D5
-      {f: 659.25, d: 0.6},  // E5
-      {f: 523.25, d: 0.4},  // C5
-      {f: 440.00, d: 1.2},  // A4
+      {f: 659.25, d: 0.4}, {f: 783.99, d: 0.4}, {f: 880.00, d: 0.8},
+      {f: 783.99, d: 0.4}, {f: 659.25, d: 0.4}, {f: 587.33, d: 0.8},
+      {f: 523.25, d: 0.4}, {f: 587.33, d: 0.4}, {f: 659.25, d: 0.8},
+      {f: 783.99, d: 0.4}, {f: 880.00, d: 0.4}, {f: 987.77, d: 1.0},
+      {f: 1046.50, d: 0.6}, {f: 987.77, d: 0.4}, {f: 880.00, d: 0.4},
+      {f: 783.99, d: 0.6}, {f: 659.25, d: 0.4}, {f: 587.33, d: 1.0},
+      {f: 523.25, d: 0.4}, {f: 587.33, d: 0.4}, {f: 659.25, d: 0.6},
+      {f: 523.25, d: 0.4}, {f: 440.00, d: 1.2}
     ];
     
-    // Bass chord progression (Am - F - C - G)
     const bassNotes = [
-      {f: 110.00, d: 2.4}, // A2 - Am
-      {f: 87.31, d: 2.4},  // F2 - F
-      {f: 130.81, d: 2.4}, // C3 - C
-      {f: 98.00, d: 2.4},  // G2 - G
-      {f: 110.00, d: 2.4}, // A2
+      {f: 110.00, d: 2.4}, {f: 87.31, d: 2.4},
+      {f: 130.81, d: 2.4}, {f: 98.00, d: 2.4},
+      {f: 110.00, d: 2.4}
     ];
 
     let t = 0;
@@ -889,7 +909,6 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
       t += note.d + 0.05;
     });
     
-    // Play soft bass underneath
     let bt = 0;
     bassNotes.forEach((note) => {
       playPianoNote(note.f, note.d, 0.08, bt);
@@ -901,16 +920,17 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
 
   function startMusic(){
     stopMusic();
+    if(!audioCtx) return;
     const total = playLoveMelody();
-    loopRef = setInterval(()=>{
-      if(musicOn) playLoveMelody();
+    STATE.musicLoop = setInterval(()=>{
+      if(musicOn && audioCtx) playLoveMelody();
     }, (total + 1.5) * 1000);
   }
 
   function stopMusic(){
-    if(loopRef){
-      clearInterval(loopRef);
-      loopRef = null;
+    if(STATE.musicLoop){
+      clearInterval(STATE.musicLoop);
+      STATE.musicLoop = null;
     }
   }
 
@@ -918,10 +938,6 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     musicOn = !musicOn;
     if(musicOn){
       initAudio();
-      // Resume context (mobile requirement)
-      if(audioCtx.state === 'suspended'){
-        audioCtx.resume();
-      }
       startMusic();
       document.getElementById('musicBtn').textContent = '🔊';
     }else{
@@ -931,42 +947,54 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
   });
 
   function popSound(){
+    if(!audioCtx) return;
     playSimpleTone(660,.1,'sine',.08);
     playSimpleTone(880,.1,'sine',.05,.03);
   }
 
   function softMagic(){
+    if(!audioCtx) return;
     [440,520,660,780].forEach((f,i)=>playSimpleTone(f,.28,'sine',.05,i*.06));
   }
 
   function cheerSound(){
+    if(!audioCtx) return;
     [523,659,784].forEach((f,i)=>playSimpleTone(f,.2,'triangle',.07,i*.12));
   }
 
   // ========= PAGE CONTROL =========
   function showPage(id){
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
+    const target = document.getElementById(id);
+    if(target) target.classList.add('active');
   }
 
+  // ========= ENVELOPE - WITH BUG FIX =========
   function openEnvelope(){
+    if(STATE.envelopeOpened) return; // PREVENT DOUBLE-CLICK
+    STATE.envelopeOpened = true;
+    
     const env = document.getElementById('envelope');
-    if(env.classList.contains('open')) return;
     env.classList.add('open');
+    
+    initAudio();
     softMagic();
-    setTimeout(()=>{
-      document.querySelector('.envelope-wrap').style.display='none';
-      document.getElementById('welcomeBox').style.display='block';
+    
+    safeTimeout(()=>{
+      const wrap = document.getElementById('envelopeWrap');
+      if(wrap) wrap.style.display='none';
+      
+      const box = document.getElementById('welcomeBox');
+      if(box) box.style.display='block';
+      
       confettiBurst(40);
+      
       if(!musicOn){
         musicOn = true;
-        initAudio();
-        if(audioCtx.state === 'suspended'){
-          audioCtx.resume();
-        }
         startMusic();
         document.getElementById('musicBtn').textContent = '🔊';
       }
+      
       setupRunButton('runBtn1','btnArea1','miniMsg1',[
         "popat zala Bondu cha🤪🤪",
         "Tuzi G@and Bondu😁😂🤣",
@@ -979,11 +1007,14 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     const btn = document.getElementById(btnId);
     const area = document.getElementById(areaId);
     const msg = document.getElementById(msgId);
+    if(!btn || !area || !msg) return;
+    
     let count = 0;
     let moving = false;
+    let completed = false; // BUG FIX: prevent multiple completions
 
     function moveBtn(){
-      if(moving) return;
+      if(moving || completed) return;
       moving = true;
       const areaRect = area.getBoundingClientRect();
       const btnRect = btn.getBoundingClientRect();
@@ -1001,46 +1032,58 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     }
 
     btn.onclick = ()=>{
+      if(completed) return;
       count++;
       if(count < 4){
         msg.textContent = msgs[count-1] || "Catch me ❤️";
         moveBtn();
       }else{
+        completed = true;
         btn.textContent = "You got me 💖";
         msg.textContent = "Opening next surprise...";
         cheerSound();
         confettiBurst(50);
-        setTimeout(successCallback,1000);
+        safeTimeout(successCallback, 1000);
       }
     };
 
     btn.addEventListener('mouseenter', ()=>{
-      if(window.innerWidth > 768 && count < 3) moveBtn();
+      if(!completed && window.innerWidth > 768 && count < 3) moveBtn();
     });
 
     btn.addEventListener('touchstart', ()=>{
-      if(count < 3) moveBtn();
+      if(!completed && count < 3) moveBtn();
     }, {passive:true});
   }
 
+  // ========= CAKE - WITH BUG FIX =========
   function blowCandles(){
+    if(STATE.page2Started) return; // PREVENT DOUBLE EXECUTION
+    STATE.page2Started = true;
+    
     const candles = document.querySelectorAll('.candle');
     const btn = document.getElementById('blowBtn');
+    if(!btn) return;
+    
     btn.disabled = true;
     btn.textContent = "Blowing...";
+    
     candles.forEach((c,i)=>{
-      setTimeout(()=>{
+      safeTimeout(()=>{
         c.classList.add('off');
         popSound();
       }, i*220);
     });
 
-    setTimeout(()=>{
-      document.getElementById('celebrateBox').style.display='block';
+    safeTimeout(()=>{
+      const box = document.getElementById('celebrateBox');
+      if(box) box.style.display='block';
+      
       confettiBurst(70);
       cheerSound();
       teddyRain();
       balloonFloat();
+      
       setupRunButton('runBtn2','btnArea2','miniMsg2',[
         "Vapas tond gheun aala re bho😢😝😝",
         "almost there 😊",
@@ -1053,7 +1096,11 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     }, 1500);
   }
 
+  // ========= TYPING - COMPLETELY REWRITTEN (BUG FIX) =========
   function startTypingSequence(){
+    if(STATE.typingInProgress) return; // PREVENT MULTIPLE TYPING
+    STATE.typingInProgress = true;
+    
     const wishEl = document.getElementById('typedWish');
     const extraBox = document.getElementById('extraBox');
     const secretBox = document.getElementById('secretBox');
@@ -1061,6 +1108,9 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     const signatureText = document.getElementById('signatureText');
     const cursor = document.getElementById('cursor');
 
+    if(!wishEl || !extraBox || !secretBox || !signature || !signatureText || !cursor) return;
+
+    // RESET EVERYTHING
     wishEl.textContent = "";
     extraBox.style.display = "none";
     extraBox.textContent = "";
@@ -1068,50 +1118,56 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     secretBox.textContent = "";
     signature.classList.remove('show');
     signatureText.textContent = "";
+    cursor.style.display = 'inline-block';
 
-    let i=0;
+    // Convert messages to character arrays (emoji-safe!)
+    const wishChars = splitToChars(wishingMessage);
+    const extraChars = splitToChars(extraMessage);
+    const secretChars = splitToChars(secretMessage);
+
+    let i = 0;
     function typeWish(){
-      if(i < wishingMessage.length){
-        wishEl.textContent += wishingMessage[i];
+      if(i < wishChars.length){
+        wishEl.textContent += wishChars[i];
         i++;
-        const ch = wishingMessage[i-1];
-        const speed = ch === ' ' ? 35 : ch === ',' || ch === '.' ? 90 : 28;
-        setTimeout(typeWish, speed);
+        const ch = wishChars[i-1];
+        const speed = ch === ' ' ? 35 : (ch === ',' || ch === '.') ? 90 : 28;
+        safeTimeout(typeWish, speed);
       }else{
-        setTimeout(()=>{
+        safeTimeout(()=>{
           extraBox.style.display = 'block';
           typeExtra();
-        },900);
+        }, 900);
       }
     }
 
-    let k=0;
+    let k = 0;
     function typeExtra(){
-      if(k < extraMessage.length){
-        extraBox.textContent += extraMessage[k];
+      if(k < extraChars.length){
+        extraBox.textContent += extraChars[k];
         k++;
-        const ch = extraMessage[k-1];
-        const speed = ch === ' ' ? 35 : ch === ',' || ch === '.' ? 110 : 30;
-        setTimeout(typeExtra, speed);
+        const ch = extraChars[k-1];
+        const speed = ch === ' ' ? 35 : (ch === ',' || ch === '.') ? 110 : 30;
+        safeTimeout(typeExtra, speed);
       }else{
-        setTimeout(()=>{
+        safeTimeout(()=>{
           secretBox.style.display = 'block';
           typeSecret();
-        },900);
+        }, 900);
       }
     }
 
-    let j=0;
+    let j = 0;
     function typeSecret(){
-      if(j < secretMessage.length){
-        secretBox.textContent += secretMessage[j];
+      if(j < secretChars.length){
+        secretBox.textContent += secretChars[j];
         j++;
-        const ch = secretMessage[j-1];
-        const speed = ch === ' ' ? 35 : ch === ',' || ch === '.' || ch === '\n' ? 120 : 32;
-        setTimeout(typeSecret, speed);
+        const ch = secretChars[j-1];
+        const speed = ch === ' ' ? 35 : (ch === ',' || ch === '.' || ch === '\n') ? 120 : 32;
+        safeTimeout(typeSecret, speed);
       }else{
         cursor.style.display = 'none';
-        setTimeout(()=>{
+        safeTimeout(()=>{
           signature.classList.add('show');
           signatureText.textContent = finalLine;
           confettiBurst(60);
@@ -1123,6 +1179,7 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     typeWish();
   }
 
+  // ========= EFFECTS =========
   function confettiBurst(n=30){
     const colors = ['#f7b1ca','#ffd99f','#e7c3f8','#ffc9db','#f2d0a4'];
     for(let i=0;i<n;i++){
@@ -1135,7 +1192,7 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
       el.style.height = (6 + Math.random()*8) + 'px';
       el.style.animationDuration = (4 + Math.random()*3) + 's';
       document.body.appendChild(el);
-      setTimeout(()=>el.remove(),8000);
+      setTimeout(()=>{ if(el.parentNode) el.remove(); }, 8000);
     }
   }
 
@@ -1149,7 +1206,7 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
         el.style.top = '-60px';
         el.style.animationDuration = (12 + Math.random()*6) + 's';
         document.body.appendChild(el);
-        setTimeout(()=>el.remove(),20000);
+        setTimeout(()=>{ if(el.parentNode) el.remove(); }, 20000);
       }, i*500);
     }
   }
@@ -1164,7 +1221,7 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
         el.style.top = '-60px';
         el.style.animationDuration = (11 + Math.random()*5) + 's';
         document.body.appendChild(el);
-        setTimeout(()=>el.remove(),18000);
+        setTimeout(()=>{ if(el.parentNode) el.remove(); }, 18000);
       }, i*600);
     }
   }
@@ -1180,7 +1237,7 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
         el.style.top = '-60px';
         el.style.animationDuration = (10 + Math.random()*6) + 's';
         document.body.appendChild(el);
-        setTimeout(()=>el.remove(),18000);
+        setTimeout(()=>{ if(el.parentNode) el.remove(); }, 18000);
       }, i*400);
     }
   }
@@ -1196,7 +1253,7 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
         el.style.top = '-60px';
         el.style.animationDuration = (9 + Math.random()*4) + 's';
         document.body.appendChild(el);
-        setTimeout(()=>el.remove(),14000);
+        setTimeout(()=>{ if(el.parentNode) el.remove(); }, 14000);
       }, i*400);
     }
   }
@@ -1207,40 +1264,45 @@ TU HAI TO ME HOON TU NAHI TO ME HOKE BHI KAHI NAHI.`;
     balloonFloat(6);
   }
 
-  let decorTimer = null;
   function startContinuousDecorations(){
+    if(STATE.decorTimer) return; // PREVENT MULTIPLE TIMERS
+    
     butterflyFloat(6);
     balloonFloat(4);
     heartFloat(6);
-    if(decorTimer) clearInterval(decorTimer);
-    decorTimer = setInterval(()=>{
+    
+    STATE.decorTimer = setInterval(()=>{
       butterflyFloat(2);
       heartFloat(3);
       if(Math.random() > 0.5) balloonFloat(2);
     }, 4000);
   }
 
+  // ========= LOAD =========
   window.addEventListener('load', ()=>{
     setTimeout(()=>{
-      document.getElementById('loading').classList.add('hide');
-      setTimeout(()=>{
-        document.getElementById('loading').remove();
-      },800);
-    },1800);
+      const loading = document.getElementById('loading');
+      if(loading){
+        loading.classList.add('hide');
+        setTimeout(()=>{
+          if(loading.parentNode) loading.remove();
+        }, 800);
+      }
+    }, 1800);
   });
 
-  document.addEventListener('click', ()=>{
-    initAudio();
-    if(audioCtx && audioCtx.state === 'suspended'){
-      audioCtx.resume();
+  // Initialize audio on first interaction (mobile requirement)
+  document.addEventListener('click', initAudio, {once:true});
+  document.addEventListener('touchstart', initAudio, {once:true});
+
+  // Cleanup on page hide (for back/forward navigation)
+  window.addEventListener('pagehide', ()=>{
+    stopMusic();
+    if(STATE.decorTimer){
+      clearInterval(STATE.decorTimer);
+      STATE.decorTimer = null;
     }
-  }, {once:true});
-  document.addEventListener('touchstart', ()=>{
-    initAudio();
-    if(audioCtx && audioCtx.state === 'suspended'){
-      audioCtx.resume();
-    }
-  }, {once:true});
+  });
 </script>
 </body>
 </html>
